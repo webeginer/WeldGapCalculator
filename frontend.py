@@ -1,18 +1,34 @@
-# frontend.py (исправленный блок результатов)
+# frontend.py (исправленный фрагмент для толщины и катета)
 import streamlit as st
 import requests
+import os
 
-st.set_page_config(page_title="Калькулятор сварочных зазоров", layout="wide")
+# Настройка API URL для деплоя
+API_URL = "http://localhost:8000"
+
+if os.getenv("RENDER"):
+    API_URL = os.getenv("API_URL", "https://weldgapcalculator.onrender.com")
+elif os.path.exists(".streamlit/secrets.toml"):
+    try:
+        API_URL = st.secrets.get("API_URL", API_URL)
+    except:
+        pass
+
+st.set_page_config(
+    page_title="WeldGapCalculator - Калькулятор сварочных зазоров",
+    page_icon="🔥",
+    layout="wide"
+)
 
 col_title, col_title2, col_title3 = st.columns([1, 4, 1])
 with col_title2:
-    st.markdown("<h1 style='text-align: center;'>🔥 WeldFOAM</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>🔥 WeldGapCalculator</h1>", unsafe_allow_html=True)
     st.markdown("<h3 style='text-align: center;'>Калькулятор сварочных зазоров</h3>", unsafe_allow_html=True)
     st.markdown("<hr style='margin: 0; padding: 0;'>", unsafe_allow_html=True)
 
-API_URL = "http://localhost:8000"
-
 with st.sidebar:
+    st.caption(f"🌐 API: {API_URL}")
+    
     st.header("📊 Исходные данные")
     
     st.subheader("⚡ Режимы сварки")
@@ -34,15 +50,32 @@ with st.sidebar:
         eta = st.number_input("КПД дуги η", value=0.75, min_value=0.6, max_value=0.9, step=0.05, format="%.2f")
     
     st.subheader("📐 Геометрия, мм")
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
         L_mm = st.number_input("Длина L", value=500, min_value=100, max_value=2000, step=50)
-    with col2:
         B_mm = st.number_input("Ширина B", value=100, min_value=20, max_value=500, step=10)
-    with col3:
-        delta_mm = st.number_input("Толщина δ", value=4.0, min_value=1.0, max_value=20.0, step=1.0)
+    with col2:
+        # Толщина
+        delta_mm = st.number_input("Толщина δ", value=4, min_value=1, max_value=30, step=1)
+        
+        # Катет k
+        if 'last_delta' not in st.session_state:
+            st.session_state.last_delta = delta_mm
+            st.session_state.leg_mm = float(delta_mm)
+        
+        # Обновляем катет только для углового шва
+        if delta_mm != st.session_state.last_delta:
+            if weld_type == "У":
+                st.session_state.leg_mm = float(delta_mm)
+            st.session_state.last_delta = delta_mm
+        
+        if weld_type == "С":
+            leg_mm = st.number_input("Катет k, мм", value=st.session_state.leg_mm, min_value=1.0, max_value=float(delta_mm), step=1.0, disabled=True)
+        else:
+            leg_mm = st.number_input("Катет k, мм", value=st.session_state.leg_mm, min_value=1.0, max_value=float(delta_mm), step=1.0)
+            st.session_state.leg_mm = leg_mm
     
-    # Угол разделки: блокируется, если выбран "У" (угловой)
+    # Угол разделки: блокируется, если выбран "У"
     if weld_type == "У":
         groove_angle = st.number_input("Угол разделки кромок θ, градусы", value=0, min_value=0, max_value=90, step=5, disabled=True)
     else:
@@ -54,10 +87,8 @@ with st.sidebar:
     st.divider()
     
     if st.button("🚀 Рассчитать", type="primary", use_container_width=True):
-        # Преобразование типа шва
         weld_type_full = "стыковой" if weld_type == "С" else "угловой"
         
-        # Формируем payload без костылей
         payload = {
             "weld_type": weld_type_full,
             "thickness": delta_mm,
@@ -65,13 +96,11 @@ with st.sidebar:
             "steel_mark": steel_mark
         }
         
-        # Добавляем leg только для углового шва
         if weld_type_full == "угловой":
-            payload["leg"] = rod_diam
+            payload["leg"] = leg_mm
         else:
             payload["leg"] = None
         
-        # Добавляем groove_angle только для стыкового шва с разделкой
         if weld_type_full == "стыковой" and groove_angle > 0:
             payload["groove_angle"] = groove_angle
         else:
@@ -93,29 +122,31 @@ st.header("📤 Результаты")
 if st.session_state.get("calculate", False):
     result = st.session_state.result
     
+    shrinkage_val = f"{result['transverse_shrinkage_mm']:.2f}".replace('.', ',')
+    ratio_val = f"{result['b600_B_ratio']:.3f}".replace('.', ',')
+    b600_val = f"{result['b600_mm']:.2f}".replace('.', ',')
+    
     col1, col2 = st.columns(2)
     with col1:
-        st.metric("Сварочный зазор (поперечная усадка Δ)", f"{result['transverse_shrinkage_mm']} мм")
+        st.metric("Сварочный зазор (поперечная усадка Δ), мм", shrinkage_val)
     with col2:
         color_icon = {"green": "🟢", "yellow": "🟡", "red": "🔴"}
-        st.metric("Эффективность прижимов", f"{color_icon.get(result['color'], '⚪')} {result['efficiency']}")
+        st.metric("Прижимы", f"{color_icon.get(result['color'], '⚪')} {result['efficiency']}")
     
-    # Показываем угловой поворот только если он есть
     if result['angular_beta_deg'] is not None:
-        st.info(f"**Угловой поворот кромок β:** {result['angular_beta_deg']}°")
+        beta_val = f"{result['angular_beta_deg']:.2f}".replace('.', ',')
+        st.info(f"**Угловой поворот кромок β:** {beta_val}°")
     
-    st.success(f"**Рекомендуемый шаг прижимов L_pr:** {result['clamp_pitch_mm']} мм")
+    st.success(f"**Рекомендуемый шаг прижимов, Lпр:** {result['clamp_pitch_mm']} мм")
     if result.get('warning'):
         st.warning(result['warning'])
     
     with st.expander("ℹ️ Детали расчёта"):
-        st.write(f"**b600 (ширина зоны пластических деформаций):** {result['b600_mm']} мм")
-        st.write(f"**Отношение b600/B:** {result['b600_B_ratio']}")
+        st.write(f"**b600:** {b600_val} мм")
+        st.write(f"**b600/B:** {ratio_val}")
         st.write(f"**Условие:** {result['condition']}")
-    
-    st.caption("Примечание: расчёт выполнен для конструкционных сталей (Ст3, 09Г2С и аналоги). Теория Окерблома (1948).")
 else:
-    st.info("👈 Настройте параметры в боковой панели и нажмите «Рассчитать»")
+    st.info("👈 Настройте параметры и нажмите «Рассчитать»")
 
 st.markdown("---")
-st.markdown("**WeldFOAM** | Калькулятор сварочных зазоров | Версия 1.0")
+st.markdown("**WeldGapCalculator** | Калькулятор сварочных зазоров | V1.0")
