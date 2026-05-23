@@ -18,8 +18,14 @@ def calc_b600(weld_type: str, thickness_mm: float, leg_mm: float = None, groove_
     else:
         raise ValueError(f"Неизвестный тип шва: {weld_type}. Допустимые: 'угловой', 'стыковой'")
 
-def calc_transverse_shrinkage(b600: float, B: float) -> dict:
-    """Расчёт поперечной усадки Δ и эффективности прижимов (с жёлтым цветом)"""
+def calc_transverse_shrinkage(b600: float, B: float, epsilon_s: float = 0.00114) -> dict:
+    """Расчёт поперечной усадки Δ и эффективности прижимов (с жёлтым цветом)
+    
+    Args:
+        b600: ширина зоны пластических деформаций, мм
+        B: ширина листа, мм
+        epsilon_s: относительная деформация (для Ст3 = 0.00114, для 09Г2С = 0.00164)
+    """
     ratio = b600 / B
     
     # Цветовая индикация по ТЗ
@@ -34,7 +40,7 @@ def calc_transverse_shrinkage(b600: float, B: float) -> dict:
         efficiency = "ВОЗМОЖНЫ ДЕФОРМАЦИИ"
         color = "yellow"
     else:  # ratio < 0.15
-        delta = 0.00114 * 13 * b600
+        delta = epsilon_s * 13 * b600
         condition = "жёсткая усадка (b600/B < 0.15)"
         efficiency = "ЭФФЕКТИВНЫ"
         color = "green"

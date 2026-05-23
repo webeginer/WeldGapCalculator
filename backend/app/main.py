@@ -7,6 +7,7 @@ from backend.app.calculators import (
     calc_angular_beta,
     calc_clamp_pitch
 )
+from backend.app.steel_db import get_steel
 
 app = FastAPI(title="WeldGapCalculator", version="1.0")
 
@@ -17,6 +18,10 @@ def root():
 @app.post("/calculate")
 def calculate(input_data: WeldInput):
     try:
+        # Получаем свойства стали
+        steel = get_steel(input_data.steel_mark)
+        epsilon_s = steel["epsilon_s"]
+        
         # Передаём groove_angle в calc_b600 для определения типа разделки
         b600 = calc_b600(
             input_data.weld_type,
@@ -25,7 +30,8 @@ def calculate(input_data: WeldInput):
             input_data.groove_angle
         )
         
-        shrinkage = calc_transverse_shrinkage(b600, input_data.B)
+        # Передаём epsilon_s в calc_transverse_shrinkage
+        shrinkage = calc_transverse_shrinkage(b600, input_data.B, epsilon_s)
         
         # Угловой поворот только для стыковых швов с разделкой
         if input_data.weld_type == "стыковой" and input_data.groove_angle is not None and input_data.groove_angle > 0:
