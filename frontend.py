@@ -31,25 +31,15 @@ with st.sidebar:
     
     st.header("📊 Исходные данные")
     
-    st.subheader("⚡ Режимы сварки")
+    st.subheader("📐 Геометрия")
     
-    I_A = st.number_input("Ток I, А", value=50, min_value=50, max_value=500, step=10)
-    U_V = st.number_input("Напряжение U, В", value=20, min_value=20, max_value=40, step=1)
-    v_mh = st.number_input("Скорость V, м/ч", value=5.0, min_value=5.0, max_value=50.0, step=1.0, format="%.1f")
-    if v_mh:
-        v_ms = v_mh / 3600.0
-    else:
-        v_ms = None
-    
-    rod_diam = st.number_input("Диаметр эл/пр, мм", value=0.8, min_value=0.8, max_value=6.0, step=0.5, format="%.1f")
     weld_type = st.selectbox("Тип шва", ["Стыковой", "Угловой"])
-    eta = st.number_input("КПД дуги η", value=0.6, min_value=0.6, max_value=0.9, step=0.05, format="%.2f")
     
-    st.subheader("📐 Геометрия, мм")
-    
-    L_mm = st.number_input("Длина L", value=100, min_value=100, max_value=2000, step=50)
-    B_mm = st.number_input("Ширина B", value=20, min_value=20, max_value=500, step=10)
-    delta_mm = st.number_input("Толщина δ", value=1, min_value=1, max_value=30, step=1, format="%d")
+    col1, col2 = st.columns(2)
+    with col1:
+        B_mm = st.number_input("Ширина B, мм", value=100, min_value=20, max_value=500, step=10)
+    with col2:
+        delta_mm = st.number_input("Толщина δ, мм", value=4, min_value=1, max_value=30, step=1, format="%d")
     
     # Катет k
     if 'last_delta' not in st.session_state:
@@ -69,16 +59,16 @@ with st.sidebar:
         st.session_state.last_delta = delta_mm
     
     if weld_type == "Стыковой":
-        leg_mm = st.number_input("Катет k", value=st.session_state.leg_mm, min_value=1, max_value=delta_mm if delta_mm else 50, step=1, disabled=True, format="%d")
+        leg_mm = st.number_input("Катет k, мм", value=st.session_state.leg_mm, min_value=1, max_value=delta_mm if delta_mm else 50, step=1, disabled=True, format="%d")
     else:
-        leg_mm = st.number_input("Катет k", value=st.session_state.leg_mm, min_value=1, max_value=delta_mm if delta_mm else 50, step=1, format="%d")
+        leg_mm = st.number_input("Катет k, мм", value=st.session_state.leg_mm, min_value=1, max_value=delta_mm if delta_mm else 50, step=1, format="%d")
         st.session_state.leg_mm = leg_mm
     
-    # Угол разделки
-    if weld_type == "Угловой":
-        groove_angle = st.number_input("Угол разделки кромок θ, градусы", value=0, min_value=0, max_value=90, step=5, disabled=True)
-    else:
+    # Угол разделки (только для стыкового шва)
+    if weld_type == "Стыковой":
         groove_angle = st.number_input("Угол разделки кромок θ, градусы", value=0, min_value=0, max_value=90, step=5)
+    else:
+        groove_angle = 0
     
     st.subheader("🏗️ Материал")
     steel_mark = st.selectbox("Марка стали", ["Ст3", "09Г2С"])
@@ -138,15 +128,23 @@ if st.session_state.get("calculate", False):
         st.info(f"**Угловой поворот кромок β:** {beta_val}°")
     
     st.success(f"**Рекомендуемый шаг прижимов, Lпр:** {result['clamp_pitch_mm']} мм")
-    if result.get('warning'):
-        st.warning(result['warning'])
+    if result.get('clamp_warning'):
+        st.warning(result['clamp_warning'])
+    
+    # НОВОЕ: Шаг прихваток
+    if result.get('tack_pitch_mm'):
+        st.info(f"**Рекомендуемый шаг прихваток, Lпрхв:** {result['tack_pitch_mm']} мм")
+        if result.get('tack_warning'):
+            st.warning(result['tack_warning'])
+        if result.get('tack_info'):
+            st.info(result['tack_info'])
     
     with st.expander("ℹ️ Детали расчёта"):
-        st.write(f"**b600:** {b600_val} мм")
-        st.write(f"**b600/B:** {ratio_val}")
+        st.write(f"**b600 (ширина зоны пластических деформаций):** {b600_val} мм")
+        st.write(f"**Отношение b600/B:** {ratio_val}")
         st.write(f"**Условие:** {result['condition']}")
 else:
     st.info("👈 Заполните все исходные данные и нажмите «Рассчитать»")
 
 st.markdown("---")
-st.markdown("**WeldGapCalculator** | Калькулятор сварочных зазоров | V1.0")
+st.markdown("**WeldGapCalculator** | Калькулятор сварочных зазоров | V1.1")

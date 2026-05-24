@@ -5,15 +5,16 @@ from backend.app.calculators import (
     calc_b600, 
     calc_transverse_shrinkage, 
     calc_angular_beta,
-    calc_clamp_pitch
+    calc_clamp_pitch,
+    calc_tack_pitch
 )
 from backend.app.steel_db import get_steel
 
-app = FastAPI(title="WeldGapCalculator", version="1.0")
+app = FastAPI(title="WeldGapCalculator", version="1.1")
 
 @app.get("/")
 def root():
-    return {"message": "Калькулятор сварочных зазоров (Окерблом)", "version": "1.0"}
+    return {"message": "Калькулятор сварочных зазоров (Окерблом)", "version": "1.1"}
 
 @app.post("/calculate")
 def calculate(input_data: WeldInput):
@@ -22,7 +23,7 @@ def calculate(input_data: WeldInput):
         steel = get_steel(input_data.steel_mark)
         epsilon_s = steel["epsilon_s"]
         
-        # Передаём groove_angle в calc_b600 для определения типа разделки
+        # Расчёт b600
         b600 = calc_b600(
             input_data.weld_type,
             input_data.thickness,
@@ -30,16 +31,25 @@ def calculate(input_data: WeldInput):
             input_data.groove_angle
         )
         
-        # Передаём epsilon_s в calc_transverse_shrinkage
+        # Поперечная усадка
         shrinkage = calc_transverse_shrinkage(b600, input_data.B, epsilon_s)
         
-        # Угловой поворот только для стыковых швов с разделкой
+        # Угловой поворот (только для стыковых швов с разделкой)
         if input_data.weld_type == "стыковой" and input_data.groove_angle is not None and input_data.groove_angle > 0:
             beta = calc_angular_beta(input_data.groove_angle)
         else:
             beta = None
         
+        # Шаг прижимов
         clamp = calc_clamp_pitch(b600, input_data.B)
+        
+        # Шаг прихваток (новое в V1.1)
+        tack = calc_tack_pitch(
+            input_data.weld_type,
+            input_data.thickness,
+            input_data.leg,
+            b600
+        )
         
         return {
             "b600_mm": round(b600, 2),
@@ -51,7 +61,11 @@ def calculate(input_data: WeldInput):
             "angular_beta_deg": beta,
             "clamp_pitch_mm": clamp["clamp_pitch_mm"],
             "clamp_pitch_raw_mm": clamp["calculated_raw_mm"],
-            "warning": clamp["warning"]
+            "clamp_warning": clamp["warning"],
+            "tack_pitch_mm": tack["tack_pitch_mm"],
+            "tack_pitch_raw_mm": tack["calculated_raw_mm"],
+            "tack_warning": tack["warning"],
+            "tack_info": tack["info"]
         }
     
     except ValueError as e:

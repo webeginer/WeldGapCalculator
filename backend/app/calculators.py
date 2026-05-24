@@ -84,3 +84,38 @@ def calc_clamp_pitch(b600: float, B: float) -> dict:
         "calculated_raw_mm": round(calculated, 1),
         "warning": warning
     }
+
+# backend/app/calculators.py (добавить в конец файла)
+def calc_tack_pitch(weld_type: str, thickness_mm: float, leg_mm: float = None, b600: float = None) -> dict:
+    """Расчёт шага прихваток L_прхв по § 34 Окерблома"""
+    
+    if weld_type == "угловой":
+        if leg_mm is None or leg_mm == 0:
+            return {"tack_pitch_mm": None, "warning": None, "info": None}
+        calculated = 100 * thickness_mm / leg_mm
+    else:  # стыковой
+        if b600 is None or b600 == 0:
+            return {"tack_pitch_mm": None, "warning": None, "info": None}
+        equiv_leg = b600 / 4.5  # эквивалентный катет
+        calculated = 100 * thickness_mm / equiv_leg
+    
+    # Округление до 10 мм вверх
+    rounded = int((calculated + 9) // 10 * 10)
+    
+    # Ограничения
+    final = max(50, min(500, rounded))
+    
+    # Предупреждения
+    warning = None
+    info = None
+    if calculated < 50:
+        warning = f"Расчётный шаг прихваток ({round(calculated, 1)} мм) менее 50 мм. Требуется очень частая фиксация кромок. Возможно, тепловложение завышено."
+    elif final > 300:
+        info = f"Расчётный шаг прихваток большой ({final} мм). Допустима фиксация только в начале и конце шва."
+    
+    return {
+        "tack_pitch_mm": final,
+        "calculated_raw_mm": round(calculated, 1),
+        "warning": warning,
+        "info": info
+    }
