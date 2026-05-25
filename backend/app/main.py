@@ -6,15 +6,16 @@ from backend.app.calculators import (
     calc_transverse_shrinkage, 
     calc_angular_beta,
     calc_clamp_pitch,
-    calc_tack_pitch
+    calc_tack_pitch,
+    calc_longitudinal_shrinkage
 )
 from backend.app.steel_db import get_steel
 
-app = FastAPI(title="WeldGapCalculator", version="1.1")
+app = FastAPI(title="WeldGapCalculator", version="1.2")
 
 @app.get("/")
 def root():
-    return {"message": "Калькулятор сварочных зазоров (Окерблом)", "version": "1.1"}
+    return {"message": "Калькулятор сварочных зазоров (Окерблом)", "version": "1.2"}
 
 @app.post("/calculate")
 def calculate(input_data: WeldInput):
@@ -43,12 +44,23 @@ def calculate(input_data: WeldInput):
         # Шаг прижимов
         clamp = calc_clamp_pitch(b600, input_data.B)
         
-        # Шаг прихваток (новое в V1.1)
+        # Шаг прихваток
         tack = calc_tack_pitch(
             input_data.weld_type,
             input_data.thickness,
             input_data.leg,
             b600
+        )
+        
+        # Продольная усадка (НОВОЕ в V1.2)
+        longitudinal = calc_longitudinal_shrinkage(
+            input_data.weld_type,
+            input_data.thickness,
+            input_data.B,
+            input_data.L,
+            input_data.leg,
+            input_data.groove_angle,
+            input_data.gap
         )
         
         return {
@@ -65,7 +77,11 @@ def calculate(input_data: WeldInput):
             "tack_pitch_mm": tack["tack_pitch_mm"],
             "tack_pitch_raw_mm": tack["calculated_raw_mm"],
             "tack_warning": tack["warning"],
-            "tack_info": tack["info"]
+            "tack_info": tack["info"],
+            "longitudinal_shrinkage_mm": longitudinal["delta_L_mm"],
+            "longitudinal_warning": longitudinal["warning"],
+            "F_weld_mm2": longitudinal["F_weld_mm2"],
+            "qn_J_per_cm": longitudinal["qn_J_per_cm"]
         }
     
     except ValueError as e:

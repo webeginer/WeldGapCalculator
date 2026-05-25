@@ -119,3 +119,50 @@ def calc_tack_pitch(weld_type: str, thickness_mm: float, leg_mm: float = None, b
         "warning": warning,
         "info": info
     }
+
+
+# backend/app/calculators.py (добавить новую функцию)
+
+def calc_longitudinal_shrinkage(weld_type: str, thickness_mm: float, B_mm: float, L_mm: float,
+                                 leg_mm: float = None, groove_angle: float = None, gap_mm: float = 0) -> dict:
+    """Расчёт продольной усадки ΔL по Окерблому"""
+    
+    # Площадь сечения детали
+    F_det = thickness_mm * B_mm  # мм²
+    
+    # Площадь шва Fшв (мм²)
+    if weld_type == "угловой":
+        if leg_mm is None:
+            return {"delta_L_mm": None, "warning": None}
+        F_weld = (leg_mm ** 2) / 2
+    elif weld_type == "стыковой":
+        if groove_angle is not None and groove_angle > 0:
+            # V-образная разделка
+            theta_rad = math.radians(groove_angle)
+            F_weld = gap_mm * thickness_mm + (thickness_mm ** 2) * math.tan(theta_rad / 2)
+        else:
+            # Без разделки
+            F_weld = gap_mm * thickness_mm
+    else:
+        return {"delta_L_mm": None, "warning": None}
+    
+    # Погонная энергия (Дж/см)
+    qn = 650 * F_weld  # Дж/см
+    
+    # Относительное укорочение
+    delta_ct = 0.83e-6 * (qn / F_det)  # безразмерная
+    
+    # Полная продольная усадка (мм)
+    delta_L = delta_ct * L_mm
+    
+    # Предупреждение
+    warning = None
+    if delta_L > 1.0:
+        warning = f"Продольная усадка значительная ({delta_L:.2f} мм), рекомендуется изменить геометрию"
+    
+    return {
+        "delta_L_mm": round(delta_L, 2),
+        "F_weld_mm2": round(F_weld, 2),
+        "qn_J_per_cm": round(qn, 1),
+        "warning": warning
+    }
